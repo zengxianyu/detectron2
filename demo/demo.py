@@ -1,4 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
+import torch
+import json
+import pdb
 import argparse
 import glob
 import multiprocessing as mp
@@ -15,6 +18,7 @@ from detectron2.data.detection_utils import read_image
 from detectron2.utils.logger import setup_logger
 
 from predictor import VisualizationDemo
+from detectron2.evaluation.coco_evaluation import instances_to_coco_json
 
 # constants
 WINDOW_NAME = "COCO detections"
@@ -26,6 +30,11 @@ def setup_cfg(args):
     # To use demo for Panoptic-DeepLab, please uncomment the following two lines.
     # from detectron2.projects.panoptic_deeplab import add_panoptic_deeplab_config  # noqa
     # add_panoptic_deeplab_config(cfg)
+    import sys
+    sys.path.append("projects/PanopticFCN")
+    from panopticfcn.config import add_panopticfcn_config  # noqa
+    add_panopticfcn_config(cfg)
+
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
     # Set score_threshold for builtin models
@@ -50,7 +59,18 @@ def get_parser():
         "--input",
         nargs="+",
         help="A list of space separated input images; "
+        "or txt file"
         "or a single glob pattern such as 'directory/*.jpg'",
+    )
+    parser.add_argument(
+        "--path_data",
+        help="A file or directory to save output visualizations. "
+        "If not given, will show output in an OpenCV window.",
+    )
+    parser.add_argument(
+        "--save_coco_json",
+        help="A file or directory to save output visualizations. "
+        "If not given, will show output in an OpenCV window.",
     )
     parser.add_argument(
         "--output",
@@ -100,16 +120,44 @@ if __name__ == "__main__":
     cfg = setup_cfg(args)
 
     demo = VisualizationDemo(cfg)
+    if args.save_coco_json:
+        f_out =  open(args.save_coco_json, "w")
 
     if args.input:
         if len(args.input) == 1:
-            args.input = glob.glob(os.path.expanduser(args.input[0]))
-            assert args.input, "The input path(s) was not found"
-        for path in tqdm.tqdm(args.input, disable=not args.output):
+            if args.input[0].endswith(".txt"):
+                with open(args.input[0], "r") as f:
+                    lines = f.readlines()
+                lines = [l.strip("\n") for l in lines]
+                args.input = lines
+            elif args.input[0].endswith(".json"):
+                with open(args.input[0], "r") as f:
+                    args.input = json.load(f)
+            else:
+                args.input = glob.glob(os.path.expanduser(args.input[0]))
+                assert args.input, "The input path(s) was not found"
+        anns = []
+        images = []
+        with open(demo.metadata.json_file,"r") as f:
+            coco_data = json.load(f)
+        output_data = {}
+        output_data['categories'] = coco_data['categories']
+        ann_idx = 0
+        for idx, path in tqdm.tqdm(enumerate(args.input)):
             # use PIL, to be consistent with evaluation
+            if args.path_data:
+                path = os.path.join(args.path_data, path)
             img = read_image(path, format="BGR")
+            h,w,c = img.shape
             start_time = time.time()
             predictions, visualized_output = demo.run_on_image(img)
+            ann = instances_to_coco_json(predictions['instances'].to(torch.device('cpu')),idx)
+            for a in ann:
+                a['id'] = ann_idx
+                ann_idx += 1
+            anns += ann
+            inp = {'file_name':path, 'height':h, 'width':w, 'id':idx}
+            images.append(inp)
             logger.info(
                 "{}: {} in {:.2f}s".format(
                     path,
@@ -128,11 +176,16 @@ if __name__ == "__main__":
                     assert len(args.input) == 1, "Please specify a directory with args.output"
                     out_filename = args.output
                 visualized_output.save(out_filename)
-            else:
-                cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
-                cv2.imshow(WINDOW_NAME, visualized_output.get_image()[:, :, ::-1])
-                if cv2.waitKey(0) == 27:
-                    break  # esc to quit
+            #else:
+            #    cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
+            #    cv2.imshow(WINDOW_NAME, visualized_output.get_image()[:, :, ::-1])
+            #    if cv2.waitKey(0) == 27:
+            #        break  # esc to quit
+        if args.save_coco_json:
+            output_data['annotations'] = anns
+            output_data['images'] = images
+            json.dump(output_data, f_out)
+
     elif args.webcam:
         assert args.input is None, "Cannot have both --input and --webcam!"
         assert args.output is None, "output not yet supported with --webcam!"
