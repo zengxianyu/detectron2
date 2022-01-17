@@ -144,43 +144,46 @@ if __name__ == "__main__":
         output_data['categories'] = coco_data['categories']
         ann_idx = 0
         for idx, path in tqdm.tqdm(enumerate(args.input)):
-            # use PIL, to be consistent with evaluation
-            if args.path_data:
-                path = os.path.join(args.path_data, path)
-            img = read_image(path, format="BGR")
-            h,w,c = img.shape
-            start_time = time.time()
-            predictions, visualized_output = demo.run_on_image(img)
-            ann = instances_to_coco_json(predictions['instances'].to(torch.device('cpu')),idx)
-            for a in ann:
-                a['id'] = ann_idx
-                ann_idx += 1
-            anns += ann
-            inp = {'file_name':path, 'height':h, 'width':w, 'id':idx}
-            images.append(inp)
-            logger.info(
-                "{}: {} in {:.2f}s".format(
-                    path,
-                    "detected {} instances".format(len(predictions["instances"]))
-                    if "instances" in predictions
-                    else "finished",
-                    time.time() - start_time,
+            try:
+                # use PIL, to be consistent with evaluation
+                if args.path_data:
+                    path = os.path.join(args.path_data, path)
+                img = read_image(path, format="BGR")
+                h,w,c = img.shape
+                start_time = time.time()
+                predictions, visualized_output = demo.run_on_image(img)
+                ann = instances_to_coco_json(predictions['instances'].to(torch.device('cpu')),idx)
+                for a in ann:
+                    a['id'] = ann_idx
+                    ann_idx += 1
+                anns += ann
+                inp = {'file_name':path, 'height':h, 'width':w, 'id':idx}
+                images.append(inp)
+                logger.info(
+                    "{}: {} in {:.2f}s".format(
+                        path,
+                        "detected {} instances".format(len(predictions["instances"]))
+                        if "instances" in predictions
+                        else "finished",
+                        time.time() - start_time,
+                    )
                 )
-            )
 
-            if args.output:
-                if os.path.isdir(args.output):
-                    assert os.path.isdir(args.output), args.output
-                    out_filename = os.path.join(args.output, os.path.basename(path))
-                else:
-                    assert len(args.input) == 1, "Please specify a directory with args.output"
-                    out_filename = args.output
-                visualized_output.save(out_filename)
-            #else:
-            #    cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
-            #    cv2.imshow(WINDOW_NAME, visualized_output.get_image()[:, :, ::-1])
-            #    if cv2.waitKey(0) == 27:
-            #        break  # esc to quit
+                if args.output:
+                    if os.path.isdir(args.output):
+                        assert os.path.isdir(args.output), args.output
+                        out_filename = os.path.join(args.output, os.path.basename(path))
+                    else:
+                        assert len(args.input) == 1, "Please specify a directory with args.output"
+                        out_filename = args.output
+                    visualized_output.save(out_filename)
+                #else:
+                #    cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
+                #    cv2.imshow(WINDOW_NAME, visualized_output.get_image()[:, :, ::-1])
+                #    if cv2.waitKey(0) == 27:
+                #        break  # esc to quit
+            except:
+                pass
         if args.save_coco_json:
             output_data['annotations'] = anns
             output_data['images'] = images
