@@ -120,8 +120,8 @@ if __name__ == "__main__":
     cfg = setup_cfg(args)
 
     demo = VisualizationDemo(cfg)
-    if args.save_coco_json:
-        f_out =  open(args.save_coco_json, "w")
+    #if args.save_coco_json:
+    #    f_out =  open(args.save_coco_json, "w")
 
     if args.input:
         if len(args.input) == 1:
@@ -145,6 +145,11 @@ if __name__ == "__main__":
         ann_idx = 0
         for idx, path in tqdm.tqdm(enumerate(args.input)):
             try:
+                _path = path
+                prefix = "/".join(path.split("/")[:-1])
+                prefix = os.path.join(args.save_coco_json, prefix)
+                if not os.path.exists(prefix):
+                    os.makedirs(prefix)
                 # use PIL, to be consistent with evaluation
                 if args.path_data:
                     path = os.path.join(args.path_data, path)
@@ -156,9 +161,15 @@ if __name__ == "__main__":
                 for a in ann:
                     a['id'] = ann_idx
                     ann_idx += 1
-                anns += ann
                 inp = {'file_name':path, 'height':h, 'width':w, 'id':idx}
-                images.append(inp)
+                _path = ".".join(_path.split(".")[:-1])+".json"
+                with open(os.path.join(args.save_coco_json, _path), "w") as f:
+                    json.dump(ann, f)
+                _path = ".".join(_path.split(".")[:-1])+"_img.json"
+                with open(os.path.join(args.save_coco_json, _path), "w") as f:
+                    json.dump(inp, f)
+                #anns += ann
+                #images.append(inp)
                 logger.info(
                     "{}: {} in {:.2f}s".format(
                         path,
@@ -166,28 +177,26 @@ if __name__ == "__main__":
                         if "instances" in predictions
                         else "finished",
                         time.time() - start_time,
-                    )
-                )
-
-                if args.output:
-                    if os.path.isdir(args.output):
-                        assert os.path.isdir(args.output), args.output
-                        out_filename = os.path.join(args.output, os.path.basename(path))
-                    else:
-                        assert len(args.input) == 1, "Please specify a directory with args.output"
-                        out_filename = args.output
-                    visualized_output.save(out_filename)
-                #else:
-                #    cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
-                #    cv2.imshow(WINDOW_NAME, visualized_output.get_image()[:, :, ::-1])
-                #    if cv2.waitKey(0) == 27:
-                #        break  # esc to quit
+                    ))
             except:
                 pass
-        if args.save_coco_json:
-            output_data['annotations'] = anns
-            output_data['images'] = images
-            json.dump(output_data, f_out)
+            if args.output:
+                if os.path.isdir(args.output):
+                    assert os.path.isdir(args.output), args.output
+                    out_filename = os.path.join(args.output, os.path.basename(path))
+                else:
+                    assert len(args.input) == 1, "Please specify a directory with args.output"
+                    out_filename = args.output
+                visualized_output.save(out_filename)
+            #else:
+            #    cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
+            #    cv2.imshow(WINDOW_NAME, visualized_output.get_image()[:, :, ::-1])
+            #    if cv2.waitKey(0) == 27:
+            #        break  # esc to quit
+        #if args.save_coco_json:
+        #    output_data['annotations'] = anns
+        #    output_data['images'] = images
+        #    json.dump(output_data, f_out)
 
     elif args.webcam:
         assert args.input is None, "Cannot have both --input and --webcam!"
